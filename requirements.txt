@@ -1,0 +1,9 @@
+heapdict
+matplotlib
+numpy
+numpydoc
+pandas
+pep8
+Pillow
+scipy
+seaborn
