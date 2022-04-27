@@ -30,40 +30,57 @@ def build_rgb_image_from_array(pixel_array, height, width):
             rgb_values[i][j].extend(rgb)
     return np.array(rgb_values)
 
-def divide_chunks(message, k):
+def divide_chunks(message, n):
     # create a mutable list copy of the message
     output = message.tolist()
 
     # looping till length of message
-    for i in range(0, len(message), k):
-        yield output[i:i + k]
+    for i in range(0, len(message), n):
+        yield output[i:i + n]
 
-def divide_chunks_with_padding(message, k):
+def divide_chunks_with_padding(message, n):
     # create a mutable list copy of the message
     output = message.tolist()
 
     # find the modulo of the message length and k
-    mod = len(message) % k
+    mod = len(message) % n
 
     # add padding bytes if needed
-    number_of_padding_bytes = k - mod
+    number_of_padding_bytes = n - mod
     for i in range(number_of_padding_bytes):
         output.append(0)
 
     # looping till length of message
-    for i in range(0, len(message), k):
-        yield output[i:i + k]
+    for i in range(0, len(message), n):
+        yield output[i:i + n]
 
-def bitstring_to_uint8_array(bitstring):
-    uint8_list = [int(bitstring[i:i + 8], 2) for i in range(0, len(bitstring), 8)]
-    return np.array(uint8_list, dtype=np.uint8)
+def add_padding_to_string(message, n):
+    # create a char array from the message string
+    message_char_array = list(message)
+
+    # find the modulo of the message length and k
+    mod = len(message_char_array) % n
+
+    # add padding chars if needed
+    number_of_padding_bytes = n - mod
+    for i in range(number_of_padding_bytes):
+        message_char_array.append("0")
+
+    output = ""
+    return output.join(message_char_array)
+
+def divide_chunks_and_remove_parity(message, n, k):
+    # Divide the message in chuncks of length n
+    message = divide_chunks(message, n)
+
+    # For each chunk remove the parity bytes
+    message_without_parity = []
+    for chunk in message:
+        message_without_parity.append(chunk[:k])
+
+    return message_without_parity
 
 
-def uint8_array_to_bitstring(uint8_array):
-    bitstring = ""
-    for uint8 in uint8_array:
-      bitstring += bin(uint8)
-    return bitstring
 
 # ========================= SOURCE =========================
 # Select an image
@@ -87,21 +104,30 @@ print(img)
 
 # Use t.tic() and t.toc() to measure the executing time as shown below
 t = Time()
-
 t.tic()
+
 # TODO Determine the number of occurrences of the source or use a fixed huffman_freq
-#Get the an array of the pixels in the image
+# Get the an array of the pixels in the image
 pixel_sequence = img.get_pixel_seq().copy()
-#Count the frequency of pixel values in the array
+
+# Count the frequency of pixel values in the array
 pixel_freq = collections.Counter(pixel_sequence).items()
 
-huffman_freq = pixel_freq
-huffman_tree = huffman.Tree(huffman_freq)
+# Construct the huffman tree
+huffman_tree = huffman.Tree(pixel_freq)
 print(F"Generating the Huffman Tree took {t.toc_str()}")
 
 t.tic()
 # TODO print-out the codebook and validate the codebook (include your findings in the report)
+# Get the encode huffman message using the generated tree
 encoded_message_huffman = huffman.encode(huffman_tree.codebook, pixel_sequence)
+
+# Add padding to message string
+encoded_message_huffman = add_padding_to_string(encoded_message_huffman,8)
+
+# Convert the huffman message bitstring into uint8 array
+uint8_stream_huffman = util.bit_to_uint8(encoded_message_huffman)
+
 print("Enc: {}".format(t.toc()))
 
 # ======================= SOURCE ENCODING ========================
@@ -112,11 +138,14 @@ t.tic()
 encoded_message_lzw, dictonary = lzw.encode(input_lzw)
 print("Enc: {}".format(t.toc()))
 
-# Generate bytestream for channel
-uint8_stream_lzw = np.array(encoded_message_lzw, dtype=np.uint8)
+# Convert encoded message integer list into a bitstring
+encoded_message_lzw_bit = util.uint32_to_bit(np.array(encoded_message_lzw))
 
+# Convert the bitstring into a byte array for channel transmission
+uint8_stream_lzw = util.bit_to_uint8(encoded_message_lzw_bit)
 
 # ====================== CHANNEL ENCODING ========================
+uint8_input = uint8_stream_lzw
 # ======================== Reed-Solomon ==========================
 # as we are working with symbols of 8 bits
 # choose n such that m is divisible by 8 when n=2^m−1
@@ -127,8 +156,8 @@ k = 223  # message_length in symbols
 coder = rs.RSCoder(n, k)
 
 # TODO generate a matrix with k symbols per rows (for each message)
-#split message in chuncks of length k
-messages = list(divide_chunks_with_padding(uint8_stream_lzw, k))
+# Split message in chunks of length k
+messages = list(divide_chunks_with_padding(uint8_input, k))
 
 # TODO afterwards you can iterate over each row to encode the message
 # RS encode the message
@@ -151,23 +180,26 @@ rs_encoded_message_bit = util.uint8_to_bit(rs_encoded_message_uint8)
 
 # ====================== CHANNEL TRANSMISSION ========================
 t.tic()
-received_message = channel(rs_encoded_message_bit, ber=0.55)
+received_message = channel(rs_encoded_message_bit, ber=0.2)
 t.toc_print()
 
 # ====================== CHANNEL DECODING ========================
 # ======================== Reed-Solomon ==========================
 # TODO Use this helper function to convert a bit stream to a uint8 stream
+# Get the uint8 version of the received message
 received_message_uint8 = util.bit_to_uint8(received_message)
 
-rs_decoded_message = StringIO()
 t.tic()
 # TODO Iterate over the received messages and compare with the original RS-encoded messages
-#Get the blocks from the channel messages
-received_message_uint8_blocks = list(divide_chunks(received_message_uint8,n))
-rs_encoded_message_uint8_blocks = list(divide_chunks(rs_encoded_message_uint8,n))
+# Get the blocks from the received message
+received_message_uint8_blocks = list(divide_chunks(received_message_uint8, n))
 
-# RS Decode
-for cnt, (block, original_block) in enumerate(zip(received_message_uint8_blocks, rs_encoded_message_uint8_blocks)):
+# Get the blocks from the original message
+original_message_uint8_blocks = list(divide_chunks(received_message_uint8, n))
+
+# RS Decode the blocks
+rs_decoded_message = StringIO()
+for cnt, (block, original_block) in enumerate(zip(received_message_uint8_blocks, original_message_uint8_blocks)):
     try:
         decoded, ecc = coder.decode_fast(block, return_string=True)
         assert coder.check(decoded + ecc), "Check not correct"
@@ -181,9 +213,17 @@ for cnt, (block, original_block) in enumerate(zip(received_message_uint8_blocks,
 t.toc_print()
 
 #Get the int array representation of the received message string
-rs_decoded_message_int = np.array(
-    [ord(c) for c in rs_encoded_message.getvalue()], dtype=np.int)
-rs_decoded_message_int = rs_decoded_message_int.tolist()
+rs_decoded_message_uint8 = np.array(
+    [ord(c) for c in rs_encoded_message.getvalue()], dtype=np.uint8)
+
+# Remove the unneeded parity bytes
+rs_decoded_message_uint8_without_parity = divide_chunks_and_remove_parity(rs_decoded_message_uint8, n, k)
+
+# Split the blocks into a list of uint8's
+rs_decoded_message_uint8_without_parity = [value for block in rs_decoded_message_uint8_without_parity for value in block]
+
+# Remove the padding
+rs_decoded_message_uint8_without_parity = rs_decoded_message_uint8_without_parity[:len(uint8_input)]
 
 print("DECODING COMPLETE")
 
@@ -191,10 +231,17 @@ print("DECODING COMPLETE")
 # ======================= SOURCE DECODING ========================
 # ====================== Lempel-Ziv-Welch ========================
 t.tic()
-final_message = lzw.decode(rs_decoded_message_int)
+
+# Convert received byte array into a bitstring
+rs_decoded_message_bit = util.uint8_to_bit(uint8_stream_lzw)
+
+# Convert the bitstring into an int array
+rs_decoded_message_int = util.bit_to_uint32(rs_decoded_message_bit)
+
+# Decode
+final_message = lzw.decode(rs_decoded_message_int.tolist())
+
 print("Enc: {0:.4f}".format(t.toc()))
-
-
 # ======================= SOURCE DECODING ========================
 # =========================== Huffman ============================
 # Decode the image
@@ -210,7 +257,3 @@ pixel_array = build_rgb_image_from_array(np.array(final_message), img.height, im
 # Show the decoded image
 decoded_image = Image.fromarray(pixel_array.astype(np.uint8))
 decoded_image.show()
-
-#TODO set datatypes to uint8
-#TODO zorgen dat hoffman werkt
-#TODO zorgen dat RS decoding werkt
