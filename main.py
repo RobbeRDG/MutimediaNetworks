@@ -145,7 +145,7 @@ encoded_message_lzw_bit = util.uint32_to_bit(np.array(encoded_message_lzw))
 uint8_stream_lzw = util.bit_to_uint8(encoded_message_lzw_bit)
 
 # ====================== CHANNEL ENCODING ========================
-uint8_input = uint8_stream_lzw
+uint8_input = uint8_stream_huffman
 # ======================== Reed-Solomon ==========================
 # as we are working with symbols of 8 bits
 # choose n such that m is divisible by 8 when n=2^m−1
@@ -230,26 +230,29 @@ print("DECODING COMPLETE")
 # TODO after everything works, try to simulate the communication model as specified in the assignment
 # ======================= SOURCE DECODING ========================
 # ====================== Lempel-Ziv-Welch ========================
-t.tic()
+#t.tic()
 
 # Convert received byte array into a bitstring
-rs_decoded_message_bit = util.uint8_to_bit(uint8_stream_lzw)
+#rs_decoded_message_bit = util.uint8_to_bit(uint8_stream_lzw)
 
 # Convert the bitstring into an int array
-rs_decoded_message_int = util.bit_to_uint32(rs_decoded_message_bit)
+#rs_decoded_message_int = util.bit_to_uint32(rs_decoded_message_bit)
 
 # Decode
-final_message = lzw.decode(rs_decoded_message_int.tolist())
+#final_message = lzw.decode(rs_decoded_message_int.tolist())
 
-print("Enc: {0:.4f}".format(t.toc()))
+#print("Enc: {0:.4f}".format(t.toc()))
 # ======================= SOURCE DECODING ========================
 # =========================== Huffman ============================
-# Decode the image
-#t.tic()
-#final_message = huffman.decode(huffman_tree, decoded_message_uint8)
-#print("Dec: {}".format(t.toc()))
+t.tic()
 
+# Convert uint8 array to bitstring
+rs_decoded_message_bit = util.uint8_to_bit(rs_decoded_message_uint8_without_parity)
 
+# Decode
+final_message = huffman.decode(huffman_tree, rs_decoded_message_bit)
+
+print("Dec: {}".format(t.toc()))
 # ========================= SINK =========================
 # Convert the image array back into an rgb array
 pixel_array = build_rgb_image_from_array(np.array(final_message), img.height, img.width)
