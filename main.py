@@ -115,12 +115,14 @@ pixel_freq = collections.Counter(pixel_sequence).items()
 
 # Construct the huffman tree
 huffman_tree = huffman.Tree(pixel_freq)
-print(F"Generating the Huffman Tree took {t.toc_str()}")
+print("Huffman tree generation: {}".format(t.toc()))
 
 t.tic()
 # TODO print-out the codebook and validate the codebook (include your findings in the report)
 # Get the encode huffman message using the generated tree
 encoded_message_huffman = huffman.encode(huffman_tree.codebook, pixel_sequence)
+
+print("Huffman enc: {}".format(t.toc()))
 
 # Add padding to message string
 encoded_message_huffman = add_padding_to_string(encoded_message_huffman,8)
@@ -128,15 +130,13 @@ encoded_message_huffman = add_padding_to_string(encoded_message_huffman,8)
 # Convert the huffman message bitstring into uint8 array
 uint8_stream_huffman = util.bit_to_uint8(encoded_message_huffman)
 
-print("Enc: {}".format(t.toc()))
-
 # ======================= SOURCE ENCODING ========================
 # ====================== Lempel-Ziv-Welch ========================
 input_lzw = img.get_pixel_seq().copy()
 
 t.tic()
 encoded_message_lzw, dictonary = lzw.encode(input_lzw)
-print("Enc: {}".format(t.toc()))
+print("LZW enc: {}".format(t.toc()))
 
 # Convert encoded message integer list into a bitstring
 encoded_message_lzw_bit = util.uint32_to_bit(np.array(encoded_message_lzw))
