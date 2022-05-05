@@ -170,7 +170,7 @@ uint8_input = uint8_stream_huffman
 # choose n such that m is divisible by 8 when n=2^m−1
 # Example: 255 + 1 = 2^m -> m = 8
 n = 255  # code_word_length in symbols
-k = 191  # message_length in symbols
+k = 223  # message_length in symbols
 
 coder = rs.RSCoder(n, k)
 
