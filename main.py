@@ -128,14 +128,14 @@ pixel_freq = collections.Counter(pixel_sequence).items()
 
 # Construct the huffman tree
 huffman_tree = huffman.Tree(pixel_freq)
-print("Huffman tree generation: {}".format(t.toc_str()))
+print("Huffman tree generation time: {}".format(t.toc_str()))
 
 t.tic()
 # TODO print-out the codebook and validate the codebook (include your findings in the report)
 # Get the encode huffman message using the generated tree
 encoded_message_huffman_bit = huffman.encode(huffman_tree.codebook, pixel_sequence)
 
-print("Huffman enc: {}".format(t.toc_str()))
+print("Huffman enc time: {}".format(t.toc_str()))
 
 # Count the amount of bits used for the image
 print("Huffman bits needed: {}".format(len(encoded_message_huffman_bit)))
@@ -152,7 +152,7 @@ input_lzw = img.get_pixel_seq().copy()
 
 t.tic()
 encoded_message_lzw, dictonary = lzw.encode(input_lzw)
-print("LZW enc: {}".format(t.toc_str()))
+print("LZW enc time: {}".format(t.toc_str()))
 
 # Convert encoded message integer list into a bitstring
 encoded_message_lzw_bit = util.uint32_to_bit(np.array(encoded_message_lzw))
@@ -170,7 +170,7 @@ uint8_input = uint8_stream_huffman
 # choose n such that m is divisible by 8 when n=2^m−1
 # Example: 255 + 1 = 2^m -> m = 8
 n = 255  # code_word_length in symbols
-k = 223  # message_length in symbols
+k = 191  # message_length in symbols
 
 coder = rs.RSCoder(n, k)
 
@@ -190,8 +190,9 @@ for message in messages:
 # TODO What is the RSCoder outputting? Convert to a uint8 (byte) stream before putting it over the channel
 rs_encoded_message_uint8 = np.array(
     [ord(c) for c in rs_encoded_message.getvalue()], dtype=np.uint8)
-print(t.toc())
-print("ENCODING COMPLETE")
+
+# Print the time needed for RS encoding
+print("RS enc time: {}".format(t.toc_str()))
 
 # TODO Use this helper function to convert a uint8 stream to a bit stream
 # Convert bytes to bit array
@@ -200,7 +201,7 @@ rs_encoded_message_bit = util.uint8_to_bit(rs_encoded_message_uint8)
 # ====================== CHANNEL TRANSMISSION ========================
 t.tic()
 received_message = channel(rs_encoded_message_bit, ber=0.55)
-t.toc_print()
+print("Channel transmission time: {}".format(t.toc_str()))
 
 # ====================== CHANNEL DECODING ========================
 # ======================== Reed-Solomon ==========================
@@ -208,7 +209,6 @@ t.toc_print()
 # Get the uint8 version of the received message
 received_message_uint8 = util.bit_to_uint8(received_message)
 
-t.tic()
 # TODO Iterate over the received messages and compare with the original RS-encoded messages
 # Get the blocks from the received message
 received_message_uint8_blocks = list(divide_chunks(received_message_uint8, n))
@@ -216,23 +216,36 @@ received_message_uint8_blocks = list(divide_chunks(received_message_uint8, n))
 # Get the blocks from the original message
 original_message_uint8_blocks = list(divide_chunks(rs_encoded_message_uint8, n))
 
+t.tic()
+
 # RS Decode the blocks
+recovered_err_count = 0
+unrecovered_err_count = 0
 rs_decoded_message = StringIO()
 for cnt, (block, original_block) in enumerate(zip(received_message_uint8_blocks, original_message_uint8_blocks)):
     try:
         decoded, ecc = coder.decode_fast(block, return_string=True)
         assert coder.check_fast(decoded + ecc), "Check not correct"
+        diff_symbols = count_different_symbols(block, original_block)
+        if diff_symbols != 0:
+            recovered_err_count += 1
+            print(F"Error found and fixed after {cnt} iterations of {len(received_message_uint8_blocks)}, {diff_symbols} different symbols")
         rs_decoded_message.write(str(decoded))
     except rs.RSCodecError as error:
+        unrecovered_err_count += 1
         diff_symbols = count_different_symbols(block, original_block)
-        print(
-            F"Error occured after {cnt} iterations of {len(received_message_uint8_blocks)}, {diff_symbols} different symbols")
-
-t.toc_print()
+        print(F"Unrecoverable error occured after {cnt} iterations of {len(received_message_uint8_blocks)}, {diff_symbols} different symbols")
 
 # Get the int array representation of the received message string
 rs_decoded_message_uint8 = np.array(
     [ord(c) for c in rs_encoded_message.getvalue()], dtype=np.uint8)
+
+# Print the time needed for RS decoding
+print("RS dec time: {}".format(t.toc_str()))
+
+# Print the amount of recovered and unrecovered errors
+print("Recovered errors: {}".format(recovered_err_count))
+print("Unrecovered errors: {}".format(unrecovered_err_count))
 
 # Remove the unneeded parity bytes
 rs_decoded_message_uint8_without_parity = divide_chunks_and_remove_parity(rs_decoded_message_uint8, n, k)
@@ -242,8 +255,6 @@ rs_decoded_message_uint8_without_parity = [value for block in rs_decoded_message
 
 # Remove the padding
 rs_decoded_message_uint8_without_parity = rs_decoded_message_uint8_without_parity[:len(uint8_input)]
-
-print("DECODING COMPLETE")
 
 # TODO after everything works, try to simulate the communication model as specified in the assignment
 # ======================= SOURCE DECODING ========================
@@ -259,7 +270,7 @@ t.tic()
 # Decode
 final_message = lzw.decode(rs_decoded_message_int.tolist())
 
-print("LZW Dec: {}".format(t.toc_str()))
+print("LZW dec time: {}".format(t.toc_str()))
 # ======================= SOURCE DECODING ========================
 # =========================== Huffman ============================
 # Convert uint8 array to bitstring
@@ -270,7 +281,7 @@ print("LZW Dec: {}".format(t.toc_str()))
 # Decode
 #final_message = huffman.decode(huffman_tree, rs_decoded_message_bit)
 
-#print("Huffman Dec: {}".format(t.toc_str()))
+#print("Huffman dec time: {}".format(t.toc_str()))
 # ========================= SINK =========================
 # Convert the image array back into an rgb array
 pixel_array = build_rgb_image_from_array(np.array(final_message), img.height, img.width)
